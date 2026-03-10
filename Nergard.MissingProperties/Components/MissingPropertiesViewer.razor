@@ -1,0 +1,174 @@
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+
+    @* ── Tool header ── *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h5">Missing Properties</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Find and delete orphaned property definitions left over after code refactoring
+                </MudText>
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+
+    @* ── Summary bar ── *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
+            @if (TotalMissing > 0)
+            {
+                <MudText Typo="Typo.body2">
+                    <strong>@TotalMissing</strong> missing @(TotalMissing == 1 ? "property" : "properties")
+                    across <strong>@(PageTypesAffected + BlockTypesAffected)</strong> @((PageTypesAffected + BlockTypesAffected) == 1 ? "type" : "types")
+                </MudText>
+            }
+            else if (!_isLoading)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No issues found</MudText>
+            }
+            <MudSpacer />
+            @if (_groups.Count > 0)
+            {
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.UnfoldMore"
+                           OnClick="ExpandAll"
+                           Disabled="_isLoading || _isDeleting">
+                    Expand All
+                </MudButton>
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.UnfoldLess"
+                           OnClick="CollapseAll"
+                           Disabled="_isLoading || _isDeleting">
+                    Collapse All
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="@(() => { _statusMessage = string.Empty; Scan(); })"
+                       Disabled="_isLoading || _isDeleting">
+                Rescan
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @* ── Action toolbar ── *@
+    @if (TotalMissing > 0)
+    {
+        <MudPaper Class="pa-3 mb-4" Elevation="1">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           OnClick="@(() => ToggleSelectAllGlobal(true))"
+                           Disabled="_isDeleting">
+                    Select All
+                </MudButton>
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           OnClick="@(() => ToggleSelectAllGlobal(false))"
+                           Disabled="_isDeleting">
+                    Deselect All
+                </MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.DeleteForever"
+                           OnClick="DeleteSelectedAsync"
+                           Disabled="_isDeleting || TotalSelected == 0">
+                    Delete Selected (@TotalSelected)
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.DeleteSweep"
+                           OnClick="DeleteAllAsync"
+                           Disabled="_isDeleting">
+                    Delete All (@TotalMissing)
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @* ── Loading / empty states ── *@
+    @if (_isLoading || _isDeleting)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Default" Class="mb-4" />
+    }
+    else if (_groups.Count == 0)
+    {
+        <MudPaper Class="pa-8" Elevation="1">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                <MudText Typo="Typo.h6">No missing properties found</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    All property definitions have matching code models.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        @* ── Collapsible panels, one per content type ── *@
+        <MudStack Spacing="2">
+            @foreach (var group in _groups)
+            {
+                <MudPaper Elevation="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2"
+                              Class="pa-3"
+                              Style="cursor: pointer; user-select: none;"
+                              @onclick="@(() => group.IsExpanded = !group.IsExpanded)">
+                        <MudIcon Icon="@(group.Kind == ContentKind.PageType
+                                          ? Icons.Material.Filled.Article
+                                          : Icons.Material.Filled.ViewModule)"
+                                 Size="Size.Small" />
+                        <MudText Typo="Typo.subtitle1">@group.ContentTypeName</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                            @group.Properties.Count missing
+                        </MudChip>
+                        <MudSpacer />
+                        <MudIcon Icon="@(group.IsExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                 Size="Size.Small" />
+                    </MudStack>
+                    <MudCollapse Expanded="@group.IsExpanded">
+                        <MudDivider />
+                        <MudStack Spacing="1" Class="pa-2">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                                <MudCheckBox T="bool"
+                                             Value="@group.AllSelected"
+                                             ValueChanged="@(val => ToggleSelectAll(group, val))"
+                                             Color="Color.Default"
+                                             Size="Size.Small"
+                                             Disabled="_isDeleting" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Select all</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            @foreach (var prop in group.Properties)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="py-1 px-2">
+                                    <MudCheckBox T="bool"
+                                                 Value="@prop.IsSelected"
+                                                 ValueChanged="@((bool val) => prop.IsSelected = val)"
+                                                 Color="Color.Default"
+                                                 Size="Size.Small"
+                                                 Disabled="_isDeleting" />
+                                    <MudText Typo="Typo.body2">@prop.PropertyName</MudText>
+                                </MudStack>
+                            }
+                        </MudStack>
+                    </MudCollapse>
+                </MudPaper>
+            }
+        </MudStack>
+    }
+
+    @* ── Status message ── *@
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <MudAlert Severity="@_messageSeverity" Class="mt-4" ShowCloseIcon="true"
+                  CloseIconClicked="@(() => _statusMessage = string.Empty)">
+            @_statusMessage
+        </MudAlert>
+    }
+
+</MudContainer>
